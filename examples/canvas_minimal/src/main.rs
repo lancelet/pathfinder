@@ -8,7 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use euclid::default::Size2D;
 use pathfinder_canvas::{Canvas, CanvasFontContext, Path2D};
 use pathfinder_color::ColorF;
 use pathfinder_geometry::rect::RectF;
@@ -23,18 +22,20 @@ use pathfinder_resources::embedded::EmbeddedResourceLoader;
 use surfman::{Connection, ContextAttributeFlags, ContextAttributes, GLVersion as SurfmanGLVersion};
 use surfman::{SurfaceAccess, SurfaceType};
 use winit::dpi::LogicalSize;
-use winit::{ControlFlow, Event, EventsLoop, WindowBuilder, WindowEvent};
+use winit::event::{Event, WindowEvent};
+use winit::event_loop::{ControlFlow, EventLoop};
+use winit::window::WindowBuilder;
 
 fn main() {
     // Open a window.
-    let mut event_loop = EventsLoop::new();
-    let window_size = Size2D::new(640, 480);
-    let logical_size = LogicalSize::new(window_size.width as f64, window_size.height as f64);
+    let event_loop = EventLoop::new();
+    let
+logical_size = LogicalSize::new(640, 480);
     let window = WindowBuilder::new().with_title("Minimal example")
-                                     .with_dimensions(logical_size)
+                                     .with_inner_size(logical_size)
                                      .build(&event_loop)
                                      .unwrap();
-    window.show();
+    window.set_visible(true);
 
     // Create a `surfman` device. On a multi-GPU system, we'll request the low-power integrated
     // GPU.
@@ -52,7 +53,7 @@ fn main() {
 
     // Make the OpenGL context via `surfman`, and load OpenGL functions.
     let surface_type = SurfaceType::Widget { native_widget };
-    let mut context = device.create_context(&context_descriptor).unwrap();
+    let mut context = device.create_context(&context_descriptor, None).unwrap();
     let surface = device.create_surface(&context, SurfaceAccess::GPUOnly, surface_type)
                         .unwrap();
     device.bind_surface_to_context(&mut context, surface).unwrap();
@@ -60,8 +61,8 @@ fn main() {
     gl::load_with(|symbol_name| device.get_proc_address(&context, symbol_name));
 
     // Get the real size of the window, taking HiDPI into account.
-    let hidpi_factor = window.get_current_monitor().get_hidpi_factor();
-    let physical_size = logical_size.to_physical(hidpi_factor);
+    let hidpi_factor = window.current_monitor().map_or(1.0_f64, |monitor| monitor.scale_factor());
+    let physical_size = logical_size.to_physical::<u8>(hidpi_factor);
     let framebuffer_size = vec2i(physical_size.width as i32, physical_size.height as i32);
 
     // Create a Pathfinder GL device.
@@ -84,12 +85,18 @@ fn main() {
     let font_context = CanvasFontContext::from_system_source();
     let mut is_first_render = true;
     // Wait for a keypress.
-    event_loop.run_forever(|event| {
+    event_loop.run(move |event, _window_target, control_flow| {
         let mut should_render = is_first_render;
         match event {
             Event::WindowEvent { event: WindowEvent::CloseRequested, .. } |
-            Event::WindowEvent { event: WindowEvent::KeyboardInput { .. }, .. } => return ControlFlow::Break,
-            Event::WindowEvent { event: WindowEvent::Refresh, .. } => {
+            Event::WindowEvent { event: WindowEvent::KeyboardInput { .. }, .. } => {
+                // Clean up.
+                drop(device.destroy_context(&mut context));
+
+                *control_flow = ControlFlow::Exit;
+                return;
+            },
+            Event::RedrawRequested { .. } => {
                 should_render = true;
             }
             _ => {},
@@ -129,9 +136,7 @@ fn main() {
         }
 
         is_first_render = false;
-        ControlFlow::Continue
+        *control_flow = ControlFlow::Wait;
     });
 
-    // Clean up.
-    drop(device.destroy_context(&mut context));
 }

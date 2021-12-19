@@ -55,7 +55,7 @@ version = "^0.4"
 features = ["sm-winit", "sm-x11"]
 
 [dependencies.winit]
-version = "^0.24" # 0.19.4 causes build errors https://github.com/rust-windowing/winit/pull/1105
+version = "^0.26"
 
 [target.'cfg(not(windows))'.dependencies]
 jemallocator = "0.3"
